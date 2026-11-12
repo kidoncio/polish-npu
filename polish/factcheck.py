@@ -1,13 +1,14 @@
 """Deterministic fact check: does a rewrite keep every fact of the original?
 
 No model involved. `check` lists what the rewrite lost or changed; an empty list
-means it is safe to use. It cannot catch a dropped plain word such as "again"
-(that is the prompt's job), only the facts below:
+means it is safe to use. It cannot catch every dropped word (that is the
+prompt's job), only the facts below:
 
   number    digit groups (times, dates, versions, IDs)
   verbatim  URLs, emails, @mentions, #channels, `code`, emoji
   day       today/tomorrow/weekday words, which must match exactly
   negation  não/not/never..., which must not decrease
+  keyword   again/de novo/still/ainda/only/só/yet/also..., which must not decrease
   name      capitalised words that are not sentence-initial
   language  the rewrite must be in the original's language
 """
@@ -27,6 +28,15 @@ DAY_ABBREVIATIONS = {"hj": "hoje", "hje": "hoje", "amn": "amanha", "amnh": "aman
 NEGATIONS = {
     "pt": frozenset("nao nunca nem jamais ninguem".split()),
     "en": frozenset("not never no nobody nothing cannot".split()),
+}
+
+# Words that change the meaning when dropped ("failed again" vs "failed"). Each
+# group lists equivalent spellings; the rewrite must have at least as many.
+KEYWORDS = {
+    "pt": {"de novo": ("de novo", "novamente", "outra vez"), "ainda": ("ainda",),
+           "só": ("so", "somente", "apenas"), "também": ("tambem", "tbm", "tb")},
+    "en": {"again": ("again", "once more"), "still": ("still",), "only": ("only",),
+           "yet": ("yet",), "also": ("also", "as well")},
 }
 
 STOPWORDS = {
@@ -83,6 +93,18 @@ def _negations(s: str, lang: str | None) -> int:
     return sum(w in words for w in _WORD.findall(norm)) + len(re.findall(r"n't\b", norm))
 
 
+def _keyword_groups(lang: str | None) -> dict[str, tuple[str, ...]]:
+    if lang:
+        return KEYWORDS[lang]
+    groups = KEYWORDS["pt"] | KEYWORDS["en"]
+    groups["só"] = ("somente", "apenas")  # bare "so" is also English
+    return groups
+
+
+def _count_phrases(norm: str, phrases: tuple[str, ...]) -> int:
+    return sum(len(re.findall(rf"\b{re.escape(p)}\b", norm)) for p in phrases)
+
+
 def _names(s: str) -> list[str]:
     names = []
     for m in re.finditer(r"\w+", s):
@@ -121,6 +143,11 @@ def check(original: str, rewritten: str) -> list[str]:
     lost = _negations(original, lang) - _negations(rewritten, lang)
     if lost > 0:
         missing.append(f"negation:{lost}")
+
+    norm_orig = normalize(original)
+    for label, phrases in _keyword_groups(lang).items():
+        if _count_phrases(norm_orig, phrases) > _count_phrases(norm_rw, phrases):
+            missing.append(f"keyword:{label}")
 
     for name in dict.fromkeys(_names(original)):
         if not re.search(rf"\b{re.escape(name)}\b", norm_rw):

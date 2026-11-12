@@ -2,8 +2,10 @@
 focused window (a KWin script that reports back over D-Bus).
 """
 import asyncio
+import fcntl
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -90,6 +92,54 @@ class Clipboard:
             time.sleep(0.03)
 
 
+def pressed_keys(state: bytes) -> list[int]:
+    """Key codes set in an EVIOCGKEY bitmask."""
+    return [i for i in range(len(state) * 8) if state[i // 8] >> (i % 8) & 1]
+
+
+KEY_A = 30
+
+
+def keyboard_devices(sysfs: Path = Path("/sys/class/input")) -> list[str]:
+    """Real keyboards (they have KEY_A), not ydotoold's virtual device."""
+    found = []
+    for dev in sorted(sysfs.glob("event*")):
+        try:
+            name = (dev / "device" / "name").read_text().strip()
+            words = (dev / "device" / "capabilities" / "key").read_text().split()
+        except OSError:
+            continue
+        lowest = int(words[-1], 16) if words else 0  # sysfs lists the highest word first
+        if "ydotoold" not in name and lowest >> KEY_A & 1:
+            found.append(f"/dev/input/{dev.name}")
+    return found
+
+
+def _eviocgkey(length: int) -> int:
+    return (2 << 30) | (length << 16) | (ord("E") << 8) | 0x18  # _IOR('E', 0x18, len)
+
+
+def any_key_down(devices: list[str]) -> bool | None:
+    """True if a key is held on any readable keyboard; None if none is readable."""
+    readable = False
+    for path in devices:
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        except OSError:
+            continue
+        try:
+            buf = bytearray(96)
+            fcntl.ioctl(fd, _eviocgkey(len(buf)), buf)
+            readable = True
+            if pressed_keys(bytes(buf)):
+                return True
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
+    return False if readable else None
+
+
 # Linux input keycodes.
 KEY_LEFTCTRL, KEY_C, KEY_V = 29, 46, 47
 # Released before every combo: the Copilot key (Meta+Shift+F23) may still be held.
@@ -105,6 +155,8 @@ class Keys:
     def start(self) -> bool:
         if not os.access("/dev/uinput", os.W_OK):
             return False
+        # A daemon killed without cleanup leaves its ydotoold (and virtual keyboard) behind.
+        subprocess.run(["pkill", "-f", f"ydotoold --socket-path={self.socket}"], stderr=subprocess.DEVNULL)
         self.socket.unlink(missing_ok=True)
         self._proc = subprocess.Popen(
             ["ydotoold", f"--socket-path={self.socket}", "--socket-perm=0600"],
@@ -125,10 +177,29 @@ class Keys:
         subprocess.run(["ydotool", "key", "--key-delay", "10", *args], env=env, check=True, timeout=5,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    def wait_released(self, timeout: float = 3.0) -> bool:
+        """Wait until the user lets go of every key (the shortcut fires on press).
+
+        Injecting while Copilot+P is still down would turn Ctrl+C into
+        Ctrl+Shift+Meta+C, and faking the modifiers' release makes the held P
+        reach the app. Only the key state is read (EVIOCGKEY), never keystrokes.
+        """
+        devices = keyboard_devices()
+        deadline = time.monotonic() + timeout
+        while True:
+            down = any_key_down(devices)
+            if not down:
+                return down is False
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.02)
+
     def _press(self, code: int) -> None:
         seq = self.combo(code)
-        self._key(seq[:len(_HELD)])
-        time.sleep(0.1)  # let the compositor see the modifiers go up
+        if not self.wait_released():
+            # Key state unreadable, or still held after the timeout: force the modifiers up.
+            self._key(seq[:len(_HELD)])
+            time.sleep(0.1)  # let the compositor see the modifiers go up
         self._key(seq[len(_HELD):])
 
     def copy(self) -> None:
@@ -199,7 +270,8 @@ class Focus:
                                       [str(self._script), self._name])
             await self._kwin(f"/Scripting/Script{sid}", "org.kde.kwin.Script", "run")
             return await asyncio.wait_for(fut, 1.0)
-        except (asyncio.TimeoutError, RuntimeError):
+        except (asyncio.TimeoutError, RuntimeError) as e:
+            print(f"focused window unknown: {e!r}", file=sys.stderr, flush=True)
             return None
         finally:
             self._reporter.pending = None

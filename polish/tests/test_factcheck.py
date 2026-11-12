@@ -47,8 +47,18 @@ def test_language_mixed_pt_is_pt():
     assert detect_language("o deploy falhou de novo no staging por causa da migration, consegue ver?") == "pt"
 
 
-def test_plain_word_loss_is_a_known_gap():  # "again" dropped: documented limitation, not caught
-    assert check("the deploy failed again on staging", "The deploy failed on staging.") == []
+def test_dropped_again_is_caught():  # the real Qwen3-4B failure from the evaluation
+    assert "keyword:again" in check("the deploy failed again on staging", "The deploy failed on staging.")
+    assert "keyword:de novo" in check("o build quebrou de novo hj", "O build quebrou hoje.")
+
+
+def test_keywords_survive_a_synonym():
+    assert check("falhou de novo", "Falhou novamente.") == []
+    assert check("tbm preciso disso", "Também preciso disso.") == []
+
+
+def test_plain_word_loss_is_a_known_gap():  # other words are the prompt's job, not the check's
+    assert check("the deploy on staging failed", "The deploy failed.") == []
 
 
 def test_expanded_day_abbreviations_are_the_same_day():

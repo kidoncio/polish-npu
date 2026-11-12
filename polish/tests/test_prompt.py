@@ -2,11 +2,31 @@
 from polish.prompt import EXAMPLES, SYSTEM, build_chat, clean_output, max_new_tokens, reapply_whitespace
 
 
+PT = "o deploy de hj falhou de novo, vc consegue ver?"
+EN = "the deploy failed again today, can you take a look?"
+
+
 def test_build_chat_ends_with_the_user_text():
-    chat = build_chat("oi tudo bem")
-    assert chat[0] == {"role": "system", "content": SYSTEM}
-    assert chat[-1] == {"role": "user", "content": "oi tudo bem"}
-    assert len(chat) == 2 + 2 * len(EXAMPLES)
+    chat = build_chat(PT)
+    assert chat[0]["role"] == "system" and chat[0]["content"].startswith(SYSTEM)
+    assert chat[-1] == {"role": "user", "content": PT}
+
+
+def test_build_chat_uses_only_examples_in_the_message_language():
+    for text, lang in ((PT, "pt"), (EN, "en")):
+        chat = build_chat(text)
+        assert len(chat) == 2 + 2 * len(EXAMPLES[lang])
+        assert [m["content"] for m in chat[1:-1:2]] == [before for before, _ in EXAMPLES[lang]]
+
+
+def test_build_chat_names_the_language():
+    assert "This message is in Portuguese. Answer in Portuguese." in build_chat(PT)[0]["content"]
+    assert "This message is in English. Answer in English." in build_chat(EN)[0]["content"]
+
+
+def test_build_chat_of_undetected_language_has_no_examples():
+    chat = build_chat("ok!")
+    assert len(chat) == 2 and "same language" in chat[0]["content"]
 
 
 def test_clean_output_strips_wrappers():
