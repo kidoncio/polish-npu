@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Bind a KDE Plasma 6 global shortcut to Polish, live (no re-login needed).
+#   contrib/kde-shortcut.sh Meta+Shift+P
+# Supports Meta/Ctrl/Alt/Shift + one letter, digit or F1–F35. Refuses keys already taken.
+set -euo pipefail
+keys=${1:?usage: $0 Meta+Shift+P}
+G="gdbus call --session --dest org.kde.kglobalaccel --object-path /kglobalaccel --method org.kde.KGlobalAccel"
+ACTION="['io.github.kidoncio.polish.desktop','_launch','Polish','Polish']"
+
+code=0
+IFS=+ read -ra parts <<<"$keys"
+for p in "${parts[@]}"; do
+    case ${p,,} in
+        meta|super) code=$((code | 0x10000000)) ;;
+        ctrl|control) code=$((code | 0x04000000)) ;;
+        alt) code=$((code | 0x08000000)) ;;
+        shift) code=$((code | 0x02000000)) ;;
+        [a-z0-9]) code=$((code | $(printf '%d' "'${p^^}"))) ;;
+        f[1-9]|f[1-2][0-9]|f3[0-5]) code=$((code | (0x01000030 + ${p:1} - 1))) ;;  # Qt::Key_F1..F35
+        *) echo "unsupported key: $p" >&2; exit 2 ;;
+    esac
+done
+
+owner=$($G.globalShortcutsByKey "([$code,0,0,0],)" "(0,)" 2>/dev/null || true)
+if [[ $owner == *"'"* && $owner != *io.github.kidoncio.polish* ]]; then
+    echo "$keys is already used by another action:" >&2
+    echo "  $owner" >&2
+    echo "Free it in System Settings → Keyboard → Shortcuts, or pick another key." >&2
+    exit 1
+fi
+$G.doRegister "$ACTION" >/dev/null
+$G.setForeignShortcutKeys "$ACTION" "[([$code,0,0,0],)]" >/dev/null
+echo "Polish bound to $keys"

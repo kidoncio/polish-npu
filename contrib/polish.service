@@ -1,0 +1,16 @@
+# Template: install.sh replaces @ROOT@ and @CONTAINER@.
+[Unit]
+Description=Polish — rewrite selected text with a local LLM (Qwen3 on the Intel NPU via OpenVINO)
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/distrobox enter @CONTAINER@ -- @ROOT@/.venv/bin/python @ROOT@/polish/daemon.py
+# Stopping "distrobox enter" does not kill the processes inside the container; kill them here.
+ExecStopPost=-/usr/bin/pkill -f @ROOT@/polish/daemon.py
+ExecStopPost=-/usr/bin/pkill -f @ROOT@/polish/pill.py
+ExecStopPost=-/usr/bin/pkill -f polish-ydotool.sock
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

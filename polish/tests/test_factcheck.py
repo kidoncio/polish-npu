@@ -49,3 +49,8 @@ def test_language_mixed_pt_is_pt():
 
 def test_plain_word_loss_is_a_known_gap():  # "again" dropped: documented limitation, not caught
     assert check("the deploy failed again on staging", "The deploy failed on staging.") == []
+
+
+def test_expanded_day_abbreviations_are_the_same_day():
+    assert check("consegue olhar hj? se nao amanha", "Consegue olhar hoje? Se não, amanhã.") == []
+    assert check("can u check tmrw", "Can you check tomorrow?") == []

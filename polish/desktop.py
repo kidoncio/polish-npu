@@ -143,13 +143,16 @@ class Keys:
         self.socket.unlink(missing_ok=True)
 
 
-BUS_NAME = "io.github.kidoncio.Polish"
+BUS_NAME = "io.github.kidoncio.Polish"  # the D-Bus interface the KWin script calls
 SCRIPT_NAME = "polish-focus"
-_SCRIPT = (
-    "const w = workspace.activeWindow;\n"
-    f'callDBus("{BUS_NAME}", "/", "{BUS_NAME}", "Report", '
-    'w ? w.internalId.toString() : "", w ? String(w.resourceClass) : "");\n'
-)
+
+
+def _script(destination: str) -> str:
+    """KWin script reporting the focused window to `destination` (our unique bus name,
+    so several connections never steal each other's replies)."""
+    return ("const w = workspace.activeWindow;\n"
+            f'callDBus("{destination}", "/", "{BUS_NAME}", "Report", '
+            'w ? w.internalId.toString() : "", w ? String(w.resourceClass) : "");\n')
 
 
 class _Reporter(ServiceInterface):
@@ -168,15 +171,17 @@ class Focus:
 
     def __init__(self, runtime_dir: Path | None = None):
         runtime_dir = runtime_dir or Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
-        self._script = runtime_dir / f"{SCRIPT_NAME}.js"
+        self._runtime = runtime_dir
         self._bus: MessageBus | None = None
         self._reporter = _Reporter()
 
     async def connect(self) -> None:
-        self._script.write_text(_SCRIPT)
         self._bus = await MessageBus().connect()
         self._bus.export("/", self._reporter)
-        await self._bus.request_name(BUS_NAME)
+        tag = self._bus.unique_name.lstrip(":").replace(".", "_")
+        self._name = f"{SCRIPT_NAME}-{tag}"
+        self._script = self._runtime / f"{self._name}.js"
+        self._script.write_text(_script(self._bus.unique_name))
 
     async def _kwin(self, path: str, iface: str, member: str, sig: str = "", body: list | None = None):
         reply = await self._bus.call(Message(destination="org.kde.KWin", path=path, interface=iface,
@@ -189,9 +194,9 @@ class Focus:
         loop = asyncio.get_running_loop()
         self._reporter.pending = fut = loop.create_future()
         try:
-            await self._kwin("/Scripting", "org.kde.kwin.Scripting", "unloadScript", "s", [SCRIPT_NAME])
+            await self._kwin("/Scripting", "org.kde.kwin.Scripting", "unloadScript", "s", [self._name])
             (sid,) = await self._kwin("/Scripting", "org.kde.kwin.Scripting", "loadScript", "ss",
-                                      [str(self._script), SCRIPT_NAME])
+                                      [str(self._script), self._name])
             await self._kwin(f"/Scripting/Script{sid}", "org.kde.kwin.Script", "run")
             return await asyncio.wait_for(fut, 1.0)
         except (asyncio.TimeoutError, RuntimeError):
@@ -203,3 +208,4 @@ class Focus:
         if self._bus:
             self._bus.disconnect()
             self._bus = None
+            self._script.unlink(missing_ok=True)

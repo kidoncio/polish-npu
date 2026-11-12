@@ -19,6 +19,11 @@ DAYS = frozenset(
     "hoje amanha ontem segunda terca quarta quinta sexta sabado domingo "
     "today tomorrow tonight yesterday monday tuesday wednesday thursday friday saturday sunday".split())
 
+# Chat spellings of day words: "hj" rewritten as "hoje" is the same day.
+DAY_ABBREVIATIONS = {"hj": "hoje", "hje": "hoje", "amn": "amanha", "amnh": "amanha",
+                     "tmrw": "tomorrow", "tmr": "tomorrow", "2morrow": "tomorrow", "tdy": "today",
+                     "2day": "today", "yday": "yesterday", "seg": "segunda", "sex": "sexta"}
+
 NEGATIONS = {
     "pt": frozenset("nao nunca nem jamais ninguem".split()),
     "en": frozenset("not never no nobody nothing cannot".split()),
@@ -61,6 +66,11 @@ def detect_language(text: str) -> str | None:
     return best
 
 
+def _days(s: str) -> list[str]:
+    words = (DAY_ABBREVIATIONS.get(w, w) for w in _words(s))
+    return [w for w in words if w in DAYS]
+
+
 def _verbatim(s: str) -> list[str]:
     tokens = _VERBATIM.findall(s)
     tokens += [c for c in s if unicodedata.category(c) == "So"]
@@ -99,8 +109,8 @@ def check(original: str, rewritten: str) -> list[str]:
         if token not in rewritten:
             missing.append(f"verbatim:{token}")
 
-    days_orig = Counter(w for w in _words(original) if w in DAYS)
-    days_rw = Counter(w for w in _words(rewritten) if w in DAYS)
+    days_orig = Counter(w for w in _days(original))
+    days_rw = Counter(w for w in _days(rewritten))
     for day in sorted(days_orig.keys() | days_rw.keys()):
         if days_orig[day] > days_rw[day]:
             missing.append(f"day:{day}")

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Polish
+Comment=Rewrite the selected text: clearer, same language, no information lost
+Exec=sh -c "$HOME/.local/bin/polish-trigger"
+Icon=tools-check-spelling
+NoDisplay=true
