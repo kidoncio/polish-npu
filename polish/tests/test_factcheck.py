@@ -64,3 +64,27 @@ def test_plain_word_loss_is_a_known_gap():  # other words are the prompt's job, 
 def test_expanded_day_abbreviations_are_the_same_day():
     assert check("consegue olhar hj? se nao amanha", "Consegue olhar hoje? Se não, amanhã.") == []
     assert check("can u check tmrw", "Can you check tomorrow?") == []
+
+
+# Everyday Brazilian Portuguese that shares words with English (do, me, so, to, for).
+PT_CHAT = [
+    "se for possível me avisa do deploy, só preciso do PR",
+    "me avisa quando o deploy do staging terminar",
+    "pode fazer o deploy do hotfix? so precisa do approve do tech lead",
+    "to fazendo o refactor do service, me manda o link do ticket",
+]
+
+
+def test_portuguese_chat_with_english_lookalikes_is_portuguese():
+    for text in PT_CHAT:
+        assert detect_language(text) == "pt", text
+
+
+def test_english_messages_stay_english():
+    for text in ("Can you send me the Q3 report by Friday? Thanks!", "I can't make it to the meeting today",
+                 "hey, quick one - the deploy failed again on staging, can you check it before the demo?"):
+        assert detect_language(text) == "en", text
+
+
+def test_translation_of_lookalike_portuguese_is_caught():
+    assert "language:pt>en" in check(PT_CHAT[1], "Let me know when the staging deploy is finished.")

@@ -37,6 +37,17 @@ def _copy(data: bytes, *args: str) -> None:
                    timeout=5, check=True)
 
 
+def restore_type(saved: dict[str, bytes]) -> str:
+    """The one type worth restoring: an image, then files, then plain text, then anything.
+    Private types (chromium/*, application/x-kde-*, x-openoffice…) only make sense
+    next to the text they accompany, so they come last."""
+    for prefix in ("image/", "text/uri-list", _PLAIN, "text/plain"):
+        for t in saved:
+            if t.startswith(prefix):
+                return t
+    return next(iter(saved))
+
+
 class Clipboard:
     def save(self) -> dict[str, bytes]:
         listed = _paste("--list-types")
@@ -52,19 +63,15 @@ class Clipboard:
         return saved
 
     def restore(self, saved: dict[str, bytes]) -> None:
-        """wl-copy offers one type, so restore the most specific one: a non-text type
-        (an image, files) if there is one, otherwise the plain text."""
+        """wl-copy offers one type, so restore the most useful one (see restore_type)."""
         if not saved:
             subprocess.run(["wl-copy", "--clear"], timeout=5)
             return
-        others = [t for t in saved if not t.startswith("text/")]
-        if others:
-            _copy(saved[others[0]], "--type", others[0])
-        elif _PLAIN in saved:
-            _copy(saved[_PLAIN])
+        kind = restore_type(saved)
+        if kind == _PLAIN:
+            _copy(saved[kind])  # plain text, offered under every text alias
         else:
-            first = next(iter(saved))
-            _copy(saved[first], "--type", first)
+            _copy(saved[kind], "--type", kind)
 
     def clear(self) -> None:
         self.set_text(SENTINEL)

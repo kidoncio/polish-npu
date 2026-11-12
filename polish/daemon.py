@@ -45,6 +45,8 @@ IDLE_SECONDS = float(os.environ.get("POLISH_IDLE_SECONDS", "300"))
 NPU_PROMPT_LEN = 1024  # NPU MAX_PROMPT_LEN: the compiled (and cached) prompt size
 MAX_RESPONSE_TOKENS = 1024  # NPU MIN_RESPONSE_LEN: the longest answer it can give
 MAX_PROMPT_TOKENS = min(int(os.environ.get("POLISH_MAX_PROMPT_TOKENS", "700")), NPU_PROMPT_LEN)
+FOCUS_SETTLE_SECONDS = 0.1  # after the keys are up, before asking KWin for the focus
+PASTE_SETTLE_SECONDS = 1.0  # after Ctrl+V, before restoring the old clipboard
 TERMINALS = (frozenset(c.strip().lower() for c in os.environ["POLISH_TERMINALS"].split(",") if c.strip())
              if os.environ.get("POLISH_TERMINALS") else DEFAULT_TERMINALS)
 RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
@@ -79,12 +81,16 @@ def n_tokens(tokenizer, text: str) -> int:
     return int(tokenizer.encode(text, add_special_tokens=False).input_ids.get_shape()[1])
 
 
+class TooLong(Exception):
+    pass
+
+
 def rewrite(pipe: ov_genai.LLMPipeline, text: str) -> str:
-    """Raises ValueError("too long") when the prompt exceeds the budget."""
+    """Raises TooLong when the prompt exceeds the budget."""
     chat = ov_genai.ChatHistory(build_chat(text))
     tok = pipe.get_tokenizer()
     if n_tokens(tok, tok.apply_chat_template(chat, add_generation_prompt=True)) > MAX_PROMPT_TOKENS:
-        raise ValueError("too long")
+        raise TooLong
     cfg = ov_genai.GenerationConfig()
     cfg.do_sample = False
     cfg.max_new_tokens = min(max_new_tokens(n_tokens(tok, text)), MAX_RESPONSE_TOKENS)
@@ -101,16 +107,17 @@ class PillClient:
     def send(self, msg) -> None:
         with self._lock:
             for _ in range(2):
-                if self._proc is None or self._proc.poll() is not None:
-                    env = dict(os.environ, LD_PRELOAD=LAYER_SHELL)
-                    self._proc = subprocess.Popen(
-                        ["/usr/bin/python3", str(HERE / "pill.py")],
-                        stdin=subprocess.PIPE, text=True, env=env)
                 try:
+                    if self._proc is None or self._proc.poll() is not None:
+                        env = dict(os.environ, LD_PRELOAD=LAYER_SHELL)
+                        self._proc = subprocess.Popen(
+                            ["/usr/bin/python3", str(HERE / "pill.py")],
+                            stdin=subprocess.PIPE, text=True, env=env)
                     self._proc.stdin.write(encode(msg))
                     self._proc.stdin.flush()
                     return
-                except BrokenPipeError:
+                except OSError as e:  # BrokenPipeError, or the pill cannot start: no pill, Polish still works
+                    log(f"pill: {e}")
                     self._proc = None
 
 
@@ -124,6 +131,7 @@ class Polish:
         self.focus = Focus(RUNTIME)
         self.generation = 0  # invalidates "hide pill" timers from older requests
         self._tasks: set[asyncio.Task] = set()  # asyncio keeps only weak references to tasks
+        self._sleep = asyncio.sleep  # replaced in tests
 
     async def start(self) -> None:
         if not self.keys.start():
@@ -140,15 +148,18 @@ class Polish:
         return "start"
 
     async def _run(self, gen: int) -> None:
-        self.pill.send(Working())
         try:
+            self.pill.send(Working())
             msg, hide_after = await self._polish(gen)
         except Exception as e:  # noqa: BLE001 — shown on the pill and logged
             log(f"error: {e}")
             msg, hide_after = Failed(f"{T['error']}: {e}"), 5
         finally:
             self.busy.finish()
-        self._show_then_hide(msg, gen, hide_after)
+        try:
+            self._show_then_hide(msg, gen, hide_after)
+        except Exception as e:  # noqa: BLE001
+            log(f"pill: {e}")
 
     async def _polish(self, gen: int):
         t0 = time.perf_counter()
@@ -156,13 +167,14 @@ class Polish:
         terminal = win0 is None or is_terminal(win0.cls, TERMINALS)
         log(f"request: window {win0.cls if win0 else 'unknown'}{' (terminal)' if terminal else ''}")
         saved = await asyncio.to_thread(self.clipboard.save)
-        pasted = False
+        touched = False  # the clipboard holds something of ours that must be undone
         try:
             if terminal:
                 text = await asyncio.to_thread(self.clipboard.primary_text)
             elif not self.keys.ok:
                 return Failed(T["no_keys"]), 5
             else:
+                touched = True
                 await asyncio.to_thread(self.clipboard.clear)
                 await asyncio.to_thread(self.keys.copy)
                 text = await asyncio.to_thread(self.clipboard.wait_text)
@@ -172,29 +184,33 @@ class Polish:
             pipe = await asyncio.to_thread(self.models.get)
             try:
                 raw = await asyncio.to_thread(rewrite, pipe, text)
-            except ValueError:
+            except TooLong:
                 log(f"{len(text)} chars: over the {MAX_PROMPT_TOKENS}-token prompt budget")
                 return Failed(T["too_long"]), 4
             out = reapply_whitespace(text, clean_output(raw))
-            missing = check(text, out)
+            missing = check(text, out) if out.strip() else ["empty:"]
             log(f"{len(text)} → {len(out)} chars in {time.perf_counter() - t0:.1f}s"
                 + (f"; fact check failed: {', '.join(m.split(':')[0] for m in missing)}" if missing else ""))
             if missing:
                 return Failed(T["kept"]), 5
 
             await asyncio.to_thread(self.clipboard.set_text, out)
-            pasted = True  # from here on the result owns the clipboard
+            touched = False  # from here on the result owns the clipboard
+            # Check the focus only once the keys are up: during Alt+Tab KWin still
+            # reports the old window until Alt is released.
+            await asyncio.to_thread(self.keys.wait_released)
+            await self._sleep(FOCUS_SETTLE_SECONDS)
             win1 = await self.focus.active()
             if decide_paste(win0, win1, terminal, self.keys.ok) == "clipboard":
                 if not terminal and win1 != win0:
                     log("focus changed: left on the clipboard")
                 return Done(T["copied"]), 3
             await asyncio.to_thread(self.keys.paste)
-            await asyncio.sleep(0.3)  # let the app read the clipboard before restoring it
+            await self._sleep(PASTE_SETTLE_SECONDS)  # let a busy app read the clipboard first
             await asyncio.to_thread(self.clipboard.restore, saved)
             return Done(T["done"]), 2
         finally:
-            if not pasted:
+            if touched:
                 await asyncio.to_thread(self.clipboard.restore, saved)
 
     def _show_then_hide(self, msg, gen: int, hide_after: float) -> None:

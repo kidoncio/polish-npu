@@ -20,7 +20,7 @@ from gi.repository import Gtk4LayerShell as Layer  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from polish.i18n import strings_for  # noqa: E402
-from polish.protocol import Done, Failed, Hide, Working, decode  # noqa: E402
+from polish.protocol import Done, Failed, Hide, LineBuffer, Working, decode  # noqa: E402
 
 T = strings_for(os.environ)
 
@@ -40,6 +40,7 @@ window { background: transparent; }
 class Pill(Gtk.Application):
     def __init__(self):
         super().__init__(application_id="io.github.kidoncio.PolishPill")
+        self.lines = LineBuffer()
 
     def do_activate(self):
         css = Gtk.CssProvider()
@@ -72,13 +73,14 @@ class Pill(Gtk.Application):
                           self._on_stdin)
 
     def _on_stdin(self, ch, cond):
-        line = sys.stdin.readline()
-        if not line:  # daemon closed the pipe
+        data = os.read(sys.stdin.fileno(), 4096)
+        if not data:  # daemon closed the pipe
             self.quit()
             return False
-        msg = decode(line)
-        if msg is not None:
-            self.show(msg)
+        for line in self.lines.feed(data):
+            msg = decode(line)
+            if msg is not None:
+                self.show(msg)
         return True
 
     def _style(self, css_class, icon, text, spinning=False):

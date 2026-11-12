@@ -39,14 +39,20 @@ KEYWORDS = {
            "yet": ("yet",), "also": ("also", "as well")},
 }
 
+# Stopwords per language. Words that are everyday in both (do, me, so, to, for,
+# as, no) are left out: "me avisa do deploy" must not look English.
 STOPWORDS = {
     "pt": frozenset(
-        "de que e o os as um uma para pra com nao se por mais como mas foi ao do da dos das no na em "
-        "voce vc isso esta ta tem eu consegue ja tambem tbm aqui entao porque pq".split()),
+        "de que e o os um uma para pra com nao se por mais como mas foi ao da dos das na em "
+        "voce vc isso esta ta tem eu consegue ja tambem tbm aqui entao porque pq pode precisa preciso "
+        "avisa manda quando fazendo vou vai obrigado olhar sobre depois tudo bem oi pessoal galera "
+        "alguem fiz sei hoje ontem amanha".split()),
     "en": frozenset(
-        "the and to of is it you that in for on with this be can we are have not if but so do at "
-        "me my i will just please thanks was".split()),
+        "the and of is it you that in on with this be can we are have not if but at my i will just "
+        "please thanks was when what there let know your from about would should could need get an".split()),
 }
+# Letters that only Portuguese uses here: each word containing one counts as Portuguese.
+_PT_LETTERS = set("ãõçáéíóúâêôà")
 
 _WORD = re.compile(r"\w+")
 _VERBATIM = re.compile(
@@ -70,6 +76,7 @@ def _words(s: str) -> list[str]:
 def detect_language(text: str) -> str | None:
     words = _words(text)
     hits = {lang: sum(w in sw for w in words) for lang, sw in STOPWORDS.items()}
+    hits["pt"] += sum(1 for w in _WORD.findall(text.lower()) if _PT_LETTERS & set(w))
     (best, top), (_, other) = sorted(hits.items(), key=lambda kv: -kv[1])
     if top < 3 or top < 1.5 * other:
         return None

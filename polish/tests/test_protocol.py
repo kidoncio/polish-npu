@@ -13,3 +13,11 @@ def test_failed_message_is_flattened_to_one_line():
 
 def test_garbage_decodes_to_none():
     assert decode("garbage") is None
+
+
+def test_line_buffer_returns_every_complete_line():
+    from polish.protocol import LineBuffer
+    buf = LineBuffer()
+    assert buf.feed(b"work\nfail Nada sele") == ["work"]
+    assert buf.feed("cionado\nhide\n".encode()) == ["fail Nada selecionado", "hide"]
+    assert buf.feed(b"") == []

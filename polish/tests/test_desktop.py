@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from polish.desktop import SENTINEL, Clipboard, Focus, Keys, keyboard_devices, pressed_keys
+from polish.desktop import SENTINEL, Clipboard, Focus, Keys, keyboard_devices, pressed_keys, restore_type
 
 needs_wayland = pytest.mark.skipif(
     not os.environ.get("WAYLAND_DISPLAY") or not shutil.which("wl-copy"), reason="needs a Wayland session")
@@ -29,6 +29,15 @@ RELEASES = ["125:0", "126:0", "42:0", "54:0", "56:0", "193:0"]
 def test_combo_releases_held_modifiers_first():  # Copilot still holds Meta+Shift+F23
     assert Keys.combo(46) == RELEASES + ["29:1", "46:1", "46:0", "29:0"]  # Ctrl+C
     assert Keys.combo(47)[-4:] == ["29:1", "47:1", "47:0", "29:0"]  # Ctrl+V
+
+
+def test_restore_prefers_image_then_files_then_plain_text():
+    chromium = {"chromium/x-source-url": b"u", "text/html": b"<b>x</b>", "text/plain;charset=utf-8": b"x"}
+    assert restore_type(chromium) == "text/plain;charset=utf-8"
+    assert restore_type({"application/x-kde-cutselection": b"0", "text/uri-list": b"file:///a"}) == "text/uri-list"
+    assert restore_type({"text/plain;charset=utf-8": b"x", "image/png": b"p"}) == "image/png"
+    assert restore_type({"text/plain": b"x", "application/x-qt-image": b"q"}) == "text/plain"
+    assert restore_type({"application/x-openoffice-foo": b"z"}) == "application/x-openoffice-foo"
 
 
 def test_pressed_keys_reads_the_evdev_bitmask():
