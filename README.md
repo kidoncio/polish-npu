@@ -70,7 +70,7 @@ running Fedora 45, which can be the same one Utter uses.
 `huggingface_hub`, `dbus-fast`, `pytest`.
 
 **Model:** [`kidoncio/Qwen3-4B-Instruct-2507-int4-cw-ov`](https://huggingface.co/kidoncio/Qwen3-4B-Instruct-2507-int4-cw-ov),
-about 2.5 GB. It is
+about 2.2 GB. It is
 [Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) converted with
 **symmetric channel-wise int4**, the only int4 layout that works on the NPU.
 `./install.sh --convert-model` builds it yourself instead (`tools/convert_model.sh`).

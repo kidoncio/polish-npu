@@ -21,7 +21,7 @@ CONVERT=0
 IMAGE=registry.fedoraproject.org/fedora:45
 MODEL=Qwen3-4B-Instruct-2507-int4-cw-ov
 MODEL_REPO=kidoncio/$MODEL
-MODEL_REVISION=""  # pinned commit of $MODEL_REPO; empty = latest
+MODEL_REVISION=d339ec6c5d7f11edbe8af76788c85f8542c70dba  # pinned commit of $MODEL_REPO
 
 # Intel's Linux NPU driver. Fedora's intel-npu-driver package ships without the
 # NPU compiler, so every model compile fails (ZE_RESULT_ERROR_UNSUPPORTED_FEATURE).
@@ -98,7 +98,7 @@ elif [[ $CONVERT == 1 ]]; then
     step "Converting $MODEL locally"
     inbox "cd '$ROOT' && tools/convert_model.sh models/$MODEL"
 else
-    step "Model $MODEL_REPO (~2.5 GB)"
+    step "Model $MODEL_REPO (~2.2 GB)"
     inbox "cd '$ROOT' && .venv/bin/hf download $MODEL_REPO ${MODEL_REVISION:+--revision $MODEL_REVISION} --local-dir models/$MODEL" \
         || die "download failed; retry, or use --convert-model"
 fi
