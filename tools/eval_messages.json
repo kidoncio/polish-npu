@@ -1,0 +1,120 @@
+[
+ {
+  "text": "oi fulano tudo bem? entao eu vi aquele bug do login ontem a noite e acho que é por causa do token que expira antes do refresh,  consegue dar uma olhada hj? se nao der amanha cedo tbm serve, o cliente ta cobrando desde segunda",
+  "keep": [
+   "token",
+   "refresh",
+   "cliente"
+  ]
+ },
+ {
+  "text": "hey, quick one - the deploy failed again on staging because of the migration 2024_11_03 it tries to add a column that already exist, can you check if we should drop it first or just skip? need it before the 3pm demo thanks",
+  "keep": [
+   "again",
+   "drop",
+   "skip",
+   "demo"
+  ]
+ },
+ {
+  "text": "Pessoal, lembrando que amanha a reuniao de planejamento foi movida pras 14h30 por causa do feriado, quem nao puder avisa o João ate hoje 18h. link: https://meet.example.com/abc-defg",
+  "keep": [
+   "planejamento",
+   "feriado"
+  ]
+ },
+ {
+  "text": "o deploy falhou de novo no staging por causa da migration, consegue ver? acho q é o cache do redis",
+  "keep": [
+   "de novo",
+   "redis",
+   "cache"
+  ]
+ },
+ {
+  "text": "nao precisa revisar o PR hj, so amanha depois do almoço",
+  "keep": [
+   "PR",
+   "almoço"
+  ]
+ },
+ {
+  "text": "Can you send me the Q3 report by Friday? Thanks!",
+  "keep": [
+   "Q3",
+   "report"
+  ]
+ },
+ {
+  "text": "pessoal rodem `make migrate` antes de subir a branch nova senao quebra tudo, vlw",
+  "keep": [
+   "branch"
+  ]
+ },
+ {
+  "text": "i dont think we should merge this yet, the tests are still flaky on ci and Maria said shes not done reviewing",
+  "keep": [
+   "flaky",
+   "reviewing",
+   "yet"
+  ]
+ },
+ {
+  "text": "bom dia! alguem sabe se o servidor de homologação ta fora? to tentando acessar desde as 9h e nada",
+  "keep": [
+   "homologação"
+  ]
+ },
+ {
+  "text": "fyi the api rate limit is 100 req/min per key, if you hit it you get a 429, just retry with backoff",
+  "keep": [
+   "backoff",
+   "retry"
+  ]
+ },
+ {
+  "text": "@carlos consegue me passar o acesso ao bucket s3 de prod? preciso pra investigar o incidente de ontem #infra",
+  "keep": [
+   "bucket",
+   "incidente"
+  ]
+ },
+ {
+  "text": "hey team, reminder that the office is closed on Monday for the holiday, we'll do the standup on Tuesday at 10am instead",
+  "keep": [
+   "office",
+   "closed",
+   "standup",
+   "instead"
+  ]
+ },
+ {
+  "text": "galera, fiz um levantamento rapido sobre o problema de performance da tela de relatorios. o principal gargalo é a query que busca as vendas do mes, ela nao usa indice e faz um full scan na tabela de pedidos que hoje tem uns 12 milhoes de linhas. tambem vi que o front faz 3 chamadas em sequencia que poderiam ser paralelas, e cada uma demora uns 800ms. minha sugestão: 1) criar um indice composto em (loja_id, data_pedido), 2) paralelizar as chamadas no front e 3) colocar cache de 5 minutos no endpoint de resumo, ja que esses dados nao mudam tanto. acho que com isso a tela cai de uns 6s pra menos de 1s. consigo começar amanha se ninguem se opor, mas preciso que alguem do time de dados confirme se o indice nao vai atrapalhar a carga noturna que roda as 2h. quem puder dar uma olhada no doc que mandei no canal, agradeço, e se tiverem outras ideias tambem to aberto. ah, e o Pedro comentou que o mesmo problema acontece na tela de estoque, entao talvez valha atacar as duas de uma vez",
+  "keep": [
+   "full scan",
+   "paralel",
+   "cache",
+   "carga noturna",
+   "estoque",
+   "doc"
+  ],
+  "expect": "too_long"
+ },
+ {
+  "text": "Hi Ana, thanks for the quick review. I've addressed all the comments and pushed a new version.",
+  "keep": [
+   "Ana",
+   "comments"
+  ]
+ },
+ {
+  "text": "pessoal, atualizando sobre o incidente de ontem: o problema foi o certificado do gateway que expirou as 23h, por isso as chamadas pro serviço de pagamento começaram a falhar. ja renovei o certificado e coloquei um alerta pra avisar 15 dias antes do vencimento. tambem abri um ticket pra automatizar a renovação com o cert-manager, mas isso fica pra sprint que vem. o impacto foi de uns 40 minutos e cerca de 300 pedidos ficaram pendentes, que o time de suporte ja reprocessou hoje de manha. se alguem notar algum pedido ainda travado me avisa por aqui ou abre um chamado com a tag pagamentos",
+  "keep": [
+   "certificado",
+   "alerta",
+   "cert-manager",
+   "suporte",
+   "pagamentos"
+  ]
+ }
+]

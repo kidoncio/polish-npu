@@ -15,7 +15,8 @@ Configuration (environment variables):
   POLISH_MODEL              model folder under models/   (Qwen3-4B-Instruct-2507-int4-cw-ov)
   POLISH_DEVICE             OpenVINO device; falls back to CPU if it fails   (NPU)
   POLISH_IDLE_SECONDS       unload the model after this long unused          (300)
-  POLISH_MAX_PROMPT_TOKENS  whole prompt budget, examples included           (1024)
+  POLISH_MAX_PROMPT_TOKENS  longest prompt accepted, examples included (700: about 150 words
+                            of message, which keeps the NPU under 30 s; at most 1024)
   POLISH_TERMINALS          comma-separated window classes treated as terminals
 """
 import asyncio
@@ -41,8 +42,9 @@ ROOT = HERE.parent
 MODEL = ROOT / "models" / os.environ.get("POLISH_MODEL", "Qwen3-4B-Instruct-2507-int4-cw-ov")
 DEVICE = os.environ.get("POLISH_DEVICE", "NPU")
 IDLE_SECONDS = float(os.environ.get("POLISH_IDLE_SECONDS", "300"))
-MAX_PROMPT_TOKENS = int(os.environ.get("POLISH_MAX_PROMPT_TOKENS", "1024"))
+NPU_PROMPT_LEN = 1024  # NPU MAX_PROMPT_LEN: the compiled (and cached) prompt size
 MAX_RESPONSE_TOKENS = 1024  # NPU MIN_RESPONSE_LEN: the longest answer it can give
+MAX_PROMPT_TOKENS = min(int(os.environ.get("POLISH_MAX_PROMPT_TOKENS", "700")), NPU_PROMPT_LEN)
 TERMINALS = (frozenset(c.strip().lower() for c in os.environ["POLISH_TERMINALS"].split(",") if c.strip())
              if os.environ.get("POLISH_TERMINALS") else DEFAULT_TERMINALS)
 RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
@@ -62,7 +64,7 @@ def load_pipeline() -> ov_genai.LLMPipeline:
     for device in dict.fromkeys([DEVICE, "CPU"]):  # requested device, then CPU
         cfg = {"CACHE_DIR": cache}
         if device == "NPU":
-            cfg |= {"MAX_PROMPT_LEN": MAX_PROMPT_TOKENS, "MIN_RESPONSE_LEN": MAX_RESPONSE_TOKENS}
+            cfg |= {"MAX_PROMPT_LEN": NPU_PROMPT_LEN, "MIN_RESPONSE_LEN": MAX_RESPONSE_TOKENS}
         try:
             t0 = time.perf_counter()
             pipe = ov_genai.LLMPipeline(str(MODEL), device, **cfg)
