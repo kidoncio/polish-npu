@@ -195,6 +195,7 @@ Lessons learned the hard way:
 |---|---|
 | The shortcut types the letter instead | `contrib/kde-shortcut.sh Meta+Shift+P` again, or log out and in |
 | "Polish is not running" notification | `systemctl --user status polish`, `journalctl --user -u polish -n 50` |
+| Service is `active`, but the log stops at `Starting container...` | an install from before 2026-11-13 can hang when another app starts the same container at the same time. Run `./install.sh` again to update the unit. |
 | "Can't simulate keys" | `/dev/uinput` is not writable by you |
 | Log says `loaded on CPU` | the NPU failed; see the line above it. Polish still works, but more slowly. |
 | Always "kept the original" | `journalctl --user -u polish` lists which kinds of facts were lost |
